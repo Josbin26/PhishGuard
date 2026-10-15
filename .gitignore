@@ -1,0 +1,9 @@
+*.log
+target/
+.env
+*.db
+*.sqlite
+*.sqlite3
+application-local.properties
+.idea/
+.vscode/

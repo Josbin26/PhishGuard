@@ -1,0 +1,307 @@
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${campaign.name}">Campaign</title>
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark px-4 mb-4">
+    <a class="navbar-brand" href="/campaigns">🎧 PhishGuard</a>
+    <div>
+        <a href="/campaigns" class="btn btn-sm btn-outline-light me-2">Dashboard</a>
+        <a href="/campaigns/new" class="btn btn-sm btn-warning me-2">New Campaign</a>
+        <form th:action="@{/logout}" method="post" style="display:inline">
+            <button class="btn btn-sm btn-danger">Logout</button>
+        </form>
+    </div>
+</nav>
+
+<div class="container">
+
+    <div th:if="${message}" class="alert alert-success" th:text="${message}"></div>
+
+    <h1 th:text="${campaign.name}"></h1>
+
+    <p>
+        Status:
+        <strong th:text="${campaign.status}"></strong>
+        | Template:
+        <span th:text="${campaign.template.name}"></span>
+        | Created:
+        <span th:text="${#temporals.format(campaign.createdAt,'yyyy-MM-dd HH:mm')}"></span>
+    </p>
+
+    <div class="mb-4 d-flex flex-wrap gap-2">
+        <a th:href="@{'/campaigns/' + ${campaign.id} + '/report'}"
+           class="btn btn-success">📊 View / Download Report</a>
+
+        <form th:if="${#lists.size(campaign.targets) > 0}"
+              method="POST"
+              th:action="@{'/campaigns/' + ${campaign.id} + '/send'}">
+            <button class="btn btn-danger">📧 Resend Emails</button>
+        </form>
+
+        <form th:if="${campaign.status == 'active'}"
+              method="POST"
+              th:action="@{'/campaigns/' + ${campaign.id} + '/pause'}">
+            <button class="btn btn-warning">⏸ Pause</button>
+        </form>
+
+        <form th:if="${campaign.status != 'active'}"
+              method="POST"
+              th:action="@{'/campaigns/' + ${campaign.id} + '/resume'}">
+            <button class="btn btn-success">▶ Resume</button>
+        </form>
+
+        <form method="POST"
+              th:action="@{'/campaigns/' + ${campaign.id} + '/delete'}">
+            <button class="btn btn-outline-danger"
+                    onclick="return confirm('Delete this campaign?')">
+                🗑 Delete
+            </button>
+        </form>
+    </div>
+
+    <h4>Tracking URLs</h4>
+
+    <table class="table table-bordered mb-4">
+        <thead class="table-dark">
+        <tr>
+            <th>Email</th>
+            <th>Tracking URL</th>
+            <th>Events</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="t : ${targetUrls}">
+            <td th:text="${t.email}"></td>
+            <td>
+                <div class="input-group input-group-sm">
+                    <input type="text"
+                           class="form-control font-monospace"
+                           th:value="${t.url}" readonly>
+                    <button class="btn btn-outline-warning"
+                            type="button"
+                            onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.innerText='✓'">
+                        Copy
+                    </button>
+                </div>
+            </td>
+            <td th:text="${#lists.size(t.events)}"></td>
+        </tr>
+        </tbody>
+    </table>
+
+    <!-- Dashboard statistics -->
+    <div class="row mb-4">
+
+        <div class="col-md-3 mb-3">
+            <div class="card text-center border-info h-100">
+                <div class="card-body">
+                    <h2 class="text-info" id="sentCount" th:text="${sent}">0</h2>
+                    <p>Emails Sent</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card text-center border-warning h-100">
+                <div class="card-body">
+                    <h2 class="text-warning" id="clickCount" th:text="${clicks}">0</h2>
+                    <p>Link Clicks</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card text-center border-danger h-100">
+                <div class="card-body">
+                    <h2 class="text-danger" id="submitCount" th:text="${submits}">0</h2>
+                    <p>Form Submits</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card text-center border-secondary h-100">
+                <div class="card-body">
+                    <h2 id="totalEventsCount" th:text="${totalEvents}">0</h2>
+                    <p>Total Events</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Event log -->
+    <h4>Event Log <small class="text-muted fs-6">(refreshes automatically)</small></h4>
+
+    <div id="emptyEventsMessage"
+         th:if="${#lists.isEmpty(events)}"
+         class="alert alert-secondary">
+        No events yet.
+    </div>
+
+    <div class="table-responsive">
+        <table id="eventLogTable"
+               class="table table-striped"
+               th:style="${#lists.isEmpty(events)} ? 'display:none' : ''">
+
+            <thead class="table-dark">
+            <tr>
+                <th>#</th>
+                <th>Email</th>
+                <th>Event</th>
+                <th>Time</th>
+                <th>IP</th>
+                <th>Browser</th>
+            </tr>
+            </thead>
+
+            <tbody id="eventLogBody">
+            <tr th:each="e,stat : ${events}">
+                <td th:text="${stat.count}"></td>
+                <td th:text="${e.target.email}"></td>
+                <td>
+                    <span class="badge bg-info"
+                          th:if="${e.eventType == 'email_sent'}">📧 Sent</span>
+                    <span class="badge bg-warning text-dark"
+                          th:if="${e.eventType == 'link_clicked'}">🖱 Clicked</span>
+                    <span class="badge bg-danger"
+                          th:if="${e.eventType == 'credentials_submitted'}">⚠ Submitted</span>
+                    <span class="badge bg-success"
+                          th:if="${e.eventType == 'training_shown'}">✅ Training</span>
+                </td>
+                <td th:text="${#temporals.format(e.timestamp,'yyyy-MM-dd HH:mm:ss')}"></td>
+                <td><code th:text="${e.ipAddress ?: '—'}"></code></td>
+                <td><small class="text-muted" th:text="${e.userAgent}"></small></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-muted small" id="lastUpdated"></p>
+
+</div>
+
+<script th:inline="javascript">
+    const campaignId = /*[[${campaign.id}]]*/ 0;
+
+    function eventBadge(type) {
+        const badge = document.createElement("span");
+
+        const styles = {
+            email_sent: ["badge bg-info", "📧 Sent"],
+            link_clicked: ["badge bg-warning text-dark", "🖱 Clicked"],
+            credentials_submitted: ["badge bg-danger", "⚠ Submitted"],
+            training_shown: ["badge bg-success", "✅ Training"]
+        };
+
+        const item = styles[type];
+
+        if (item) {
+            badge.className = item[0];
+            badge.textContent = item[1];
+        } else {
+            badge.className = "badge bg-secondary";
+            badge.textContent = type || "Event";
+        }
+
+        return badge;
+    }
+
+    async function refreshDashboard() {
+        try {
+            const response = await fetch(
+                `/campaigns/${campaignId}/stats`,
+                {
+                    cache: "no-store",
+                    headers: { "Accept": "application/json" }
+                }
+            );
+
+            if (!response.ok) {
+                console.error("Dashboard refresh failed:", response.status);
+                return;
+            }
+
+            const stats = await response.json();
+
+            document.getElementById("sentCount").textContent =
+                stats.sent ?? 0;
+
+            document.getElementById("clickCount").textContent =
+                stats.clicks ?? 0;
+
+            document.getElementById("submitCount").textContent =
+                stats.submits ?? 0;
+
+            document.getElementById("totalEventsCount").textContent =
+                stats.totalEvents ?? 0;
+
+            // Refresh event log when the endpoint provides event details.
+            if (Array.isArray(stats.events)) {
+                const tbody = document.getElementById("eventLogBody");
+                const table = document.getElementById("eventLogTable");
+                const emptyMessage = document.getElementById("emptyEventsMessage");
+
+                tbody.replaceChildren();
+
+                stats.events.forEach((event, index) => {
+                    const row = document.createElement("tr");
+
+                    const number = document.createElement("td");
+                    number.textContent = index + 1;
+                    row.appendChild(number);
+
+                    const email = document.createElement("td");
+                    email.textContent = event.email || "";
+                    row.appendChild(email);
+
+                    const eventCell = document.createElement("td");
+                    eventCell.appendChild(eventBadge(event.eventType));
+                    row.appendChild(eventCell);
+
+                    const time = document.createElement("td");
+                    time.textContent = event.timestamp || "";
+                    row.appendChild(time);
+
+                    const ipCell = document.createElement("td");
+                    const ip = document.createElement("code");
+                    ip.textContent = event.ipAddress || "—";
+                    ipCell.appendChild(ip);
+                    row.appendChild(ipCell);
+
+                    const browserCell = document.createElement("td");
+                    const browser = document.createElement("small");
+                    browser.className = "text-muted";
+                    browser.textContent = event.userAgent || "";
+                    browserCell.appendChild(browser);
+                    row.appendChild(browserCell);
+
+                    tbody.appendChild(row);
+                });
+
+                table.style.display = stats.events.length ? "" : "none";
+                emptyMessage.style.display = stats.events.length ? "none" : "";
+            }
+
+            document.getElementById("lastUpdated").textContent =
+                "Last updated: " + new Date().toLocaleTimeString();
+
+        } catch (error) {
+            console.error("Unable to refresh campaign dashboard:", error);
+        }
+    }
+
+    refreshDashboard();
+    setInterval(refreshDashboard, 3000);
+</script>
+
+</body>
+</html>
